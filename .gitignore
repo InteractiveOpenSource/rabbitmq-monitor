@@ -1,0 +1,8 @@
+.idea
+.env
+
+build
+!build/.empty
+
+.temp
+!.temp/.empty
