@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"code.cloudfoundry.org/bytefmt"
+	"math"
+	"strings"
 )
 
 func Monitor(env ServerConfig) *MonitorScreen {
@@ -25,7 +27,10 @@ type MonitorScreen struct {
 }
 
 func (m *MonitorScreen) Show() (succeeded bool) {
-	fmt.Println(">> Date", time.Now())
+	fmt.Println(`=======================================`)
+	fmt.Println(`- RabbitMQ Server Monitor (0.0.1) ===`)
+	fmt.Printf("- Vhost %s\n", m.Vhost)
+	fmt.Println(`=======================================`)
 
 	url := fmt.Sprintf("http://%s:%s@%s:%d/api/queues/%s", m.User, m.Password, m.Host, m.Port, m.Vhost)
 	if response, err := http.Get(url); err != nil {
@@ -74,19 +79,39 @@ func (m *MonitorScreen) Show() (succeeded bool) {
 
 func (m *MonitorScreen) OnScreen() {
 	var keys []string
+	maxName := 0
 	for k := range m.Data {
 		keys = append(keys, k)
+		if maxName < len(k) {
+			maxName = len(k)
+		}
 	}
 	sort.Strings(keys)
 
 	for _, name := range keys {
 		q := m.Data[name]
-		line1 := fmt.Sprintf("-- %s ---------------\n", name)
+		sign := "+"
+		if q.Rates.Messages < 0 {
+			sign = "-"
+		} else {
+			sign = "+"
+		}
+		line1 := fmt.Sprintf("-- %s (%s%0.2f/s) %s\n", name, sign, math.Abs(q.Rates.Messages), strings.Repeat("-", 20 + maxName - len(name)))
 		fmt.Printf(line1)
 		q.onScreen()
 		// fmt.Printf("%s\n\n", strings.Repeat("-", len(line1)-1))
 		fmt.Println("")
 	}
+}
+
+func (d *queueData) onScreen() {
+	// fmt.Printf("Name: %s\n", d.Name)
+	fmt.Printf("Memory: %s\n", bytefmt.ByteSize(d.Memory))
+	fmt.Printf("Consumers: %d\n", d.Consumers)
+	fmt.Printf("Messages: %d\n", d.Messages)
+	fmt.Printf("Rates: R=%0.2f/s, Pub=%0.2f/s, Ack=%0.2f/s, W=%0.2f/s\n", math.Abs(d.Rates.Ready), math.Abs(d.Rates.Publish), math.Abs(d.Rates.Ack), math.Abs(d.Rates.DiskWrites))
+	// fmt.Printf("Url: %s\n", d.Url)
+	// fmt.Printf("Since: %s\n", d.Since)
 }
 
 func (m *MonitorScreen) Clear() {
@@ -113,17 +138,33 @@ type Details struct {
 	Rate    float64 `json:"rate"`
 }
 
+type MessagesStats struct {
+	Ack               int     `json:"ack"`
+	Deliver           int     `json:"deliver"`
+	DeliverGet        int     `json:"deliver_get"`
+	DiskWrite         int     `json:"disk_writes"`
+	Publish           int     `json:"publish"`
+	Redeliver         int     `json:"redeliver"`
+	AckDetails        Details `json:"ack_details"`
+	DeliverDetails    Details `json:"deliver_details"`
+	DeliverGetDetails Details `json:"deliver_get_details"`
+	DiskWriteDetails  Details `json:"disk_writes_details"`
+	PublishDetails    Details `json:"publish_details"`
+	RedeliverDetails  Details `json:"redeliver_details"`
+}
+
 type queueJSON struct {
-	Name                          string  `json:"name"`
-	Node                          string  `json:"node"`
-	Messages                      int     `json:"messages"`
-	MessagesReady                 int     `json:"messages_ready"`
-	Since                         string  `json:"idle_since"`
-	Consumers                     int     `json:"consumers"`
-	Memory                        uint64  `json:"memory"`
-	MessagesDetails               Details `json:"messages_details"`
-	MessagesReadyDetails          Details `json:"messages_ready_details"`
-	MessagesUnacknowledgedDetails Details `json:"messages_unacknowledged_details"`
+	Name                          string        `json:"name"`
+	Node                          string        `json:"node"`
+	Messages                      int           `json:"messages"`
+	MessagesReady                 int           `json:"messages_ready"`
+	Since                         string        `json:"idle_since"`
+	Consumers                     int           `json:"consumers"`
+	Memory                        uint64        `json:"memory"`
+	MessagesDetails               Details       `json:"messages_details"`
+	MessagesReadyDetails          Details       `json:"messages_ready_details"`
+	MessagesUnacknowledgedDetails Details       `json:"messages_unacknowledged_details"`
+	MessagesStats                 MessagesStats `json:"message_stats"`
 }
 
 type queueData struct {
@@ -137,6 +178,13 @@ type queueData struct {
 		Messages       float64 `json:"messages"`
 		Ready          float64 `json:"ready"`
 		Unacknowledged float64 `json:"unack"`
+		// from messages_stats
+		Deliver    float64 `json:"deliver"`
+		DeliverGet float64 `json:"deliver_get"`
+		Redeliver  float64 `json:"redeliver"`
+		Publish    float64 `json:"publish"`
+		Ack        float64 `json:"ack"`
+		DiskWrites float64 `json:"disk_writes"`
 	} `json:"rates"`
 }
 
@@ -164,17 +212,15 @@ func (d *queueData) build(q queueJSON) error {
 	d.Consumers = jsonData.Consumers
 	d.Memory = jsonData.Memory
 
-	d.Rates.Messages, d.Rates.Ready, d.Rates.Unacknowledged = jsonData.MessagesDetails.Rate, jsonData.MessagesReadyDetails.Rate, jsonData.MessagesUnacknowledgedDetails.Rate
+	d.Rates.Messages = jsonData.MessagesDetails.Rate
+	d.Rates.Ready = jsonData.MessagesReadyDetails.Rate
+	d.Rates.Unacknowledged = jsonData.MessagesUnacknowledgedDetails.Rate
+	d.Rates.Deliver = jsonData.MessagesStats.DeliverDetails.Rate
+	d.Rates.DeliverGet = jsonData.MessagesStats.DeliverGetDetails.Rate
+	d.Rates.Redeliver = jsonData.MessagesStats.RedeliverDetails.Rate
+	d.Rates.Publish = jsonData.MessagesStats.PublishDetails.Rate
+	d.Rates.Ack = jsonData.MessagesStats.AckDetails.Rate
+	d.Rates.DiskWrites = jsonData.MessagesStats.DiskWriteDetails.Rate
 
 	return nil
-}
-
-func (d *queueData) onScreen() {
-	// fmt.Printf("Name: %s\n", d.Name)
-	fmt.Printf("Memory: %s\n", bytefmt.ByteSize(d.Memory))
-	fmt.Printf("Consumers: %d\n", d.Consumers)
-	fmt.Printf("Messages: %d\n", d.Messages)
-	fmt.Printf("Rates: M=%s/s, U=%s/s, R=%s/s\n", bytefmt.ByteSize(uint64(d.Rates.Messages)), bytefmt.ByteSize(uint64(d.Rates.Unacknowledged)), bytefmt.ByteSize(uint64(d.Rates.Ready)))
-	// fmt.Printf("Url: %s\n", d.Url)
-	// fmt.Printf("Since: %s\n", d.Since)
 }
