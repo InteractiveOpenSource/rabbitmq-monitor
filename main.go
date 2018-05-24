@@ -9,8 +9,13 @@ import (
 var config ServerConfig
 var err error
 var tick int
+// var emitter EventEmitter = GetEmmiter()
 
 func main() {
+	emitter := GetEmitter()
+
+	defineEmitter(emitter)
+
 	app := cli.NewApp()
 
 	app.Name = "RabbitMQ Monitor tool"
@@ -65,7 +70,6 @@ func main() {
 					return err
 				}
 
-				log.Println("[INFO] Start Monitoring", config)
 				monitor := Monitor(config)
 
 				monitor.Tick(tick)
