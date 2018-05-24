@@ -96,7 +96,7 @@ func (m *MonitorScreen) OnScreen() {
 		} else {
 			sign = "+"
 		}
-		line1 := fmt.Sprintf("-- %s (%s%0.2f/s) %s\n", name, sign, math.Abs(q.Rates.Messages), strings.Repeat("-", 20 + maxName - len(name)))
+		line1 := fmt.Sprintf("-- %s (%s%0.2f/s) %s\n", name, sign, math.Abs(q.Rates.Messages), strings.Repeat("-", 20+maxName-len(name)))
 		fmt.Printf(line1)
 		q.onScreen()
 		// fmt.Printf("%s\n\n", strings.Repeat("-", len(line1)-1))
@@ -108,7 +108,8 @@ func (d *queueData) onScreen() {
 	// fmt.Printf("Name: %s\n", d.Name)
 	fmt.Printf("Memory: %s\n", bytefmt.ByteSize(d.Memory))
 	fmt.Printf("Consumers: %d\n", d.Consumers)
-	fmt.Printf("Messages: %d\n", d.Messages)
+	fmt.Printf("Ready: %d\n", d.Count.Ready)
+	fmt.Printf("Processing: %d\n", d.Count.Unack)
 	fmt.Printf("Rates: R=%0.2f/s, Pub=%0.2f/s, Ack=%0.2f/s, W=%0.2f/s\n", math.Abs(d.Rates.Ready), math.Abs(d.Rates.Publish), math.Abs(d.Rates.Ack), math.Abs(d.Rates.DiskWrites))
 	// fmt.Printf("Url: %s\n", d.Url)
 	// fmt.Printf("Since: %s\n", d.Since)
@@ -158,6 +159,7 @@ type queueJSON struct {
 	Node                          string        `json:"node"`
 	Messages                      int           `json:"messages"`
 	MessagesReady                 int           `json:"messages_ready"`
+	MessagesUnack                 int           `json:"messages_unacknowledged"`
 	Since                         string        `json:"idle_since"`
 	Consumers                     int           `json:"consumers"`
 	Memory                        uint64        `json:"memory"`
@@ -174,6 +176,11 @@ type queueData struct {
 	Since     string `json:"since"`
 	Consumers int    `json:"consumers"`
 	Memory    uint64 `json:"memory"`
+	Count struct {
+		Messages int `json:"messages"`
+		Ready    int `json:"ready"`
+		Unack    int `json:"unack"`
+	} `json:"count"`
 	Rates struct {
 		Messages       float64 `json:"messages"`
 		Ready          float64 `json:"ready"`
@@ -211,6 +218,10 @@ func (d *queueData) build(q queueJSON) error {
 	d.Since = jsonData.Since
 	d.Consumers = jsonData.Consumers
 	d.Memory = jsonData.Memory
+
+	d.Count.Messages = jsonData.Messages
+	d.Count.Ready = jsonData.MessagesReady
+	d.Count.Unack = jsonData.MessagesUnack
 
 	d.Rates.Messages = jsonData.MessagesDetails.Rate
 	d.Rates.Ready = jsonData.MessagesReadyDetails.Rate
