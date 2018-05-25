@@ -43,7 +43,7 @@ func defineEmitter(e *event.EventEmitter) {
 			byteData = []byte("[]")
 		}
 
-		fmt.Printf("%s", byteData)
+		fmt.Sprintf("%s", byteData)
 
 		return nil
 	})
