@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"time"
 	"sort"
+	"math"
+	"strings"
 	"os/exec"
 	"net/http"
 	"io/ioutil"
 	"encoding/json"
 	"code.cloudfoundry.org/bytefmt"
-	"math"
-	"strings"
+	event "github.com/wauio/event-emitter"
 )
 
-func Monitor(env ServerConfig) *MonitorScreen {
+func Monitor(env ServerConfig, e *event.EventEmitter) *MonitorScreen {
 	b := map[string]queueData{}
-	monitor := &MonitorScreen{env, b}
+	monitor := &MonitorScreen{env, b, e}
 
 	return monitor
 }
@@ -24,11 +25,12 @@ func Monitor(env ServerConfig) *MonitorScreen {
 type MonitorScreen struct {
 	ServerConfig
 	Data map[string]queueData
+	*event.EventEmitter
 }
 
 func (m *MonitorScreen) Show() (succeeded bool) {
 	fmt.Println(`=======================================`)
-	fmt.Println(`- RabbitMQ Server Monitor (0.0.1) ===`)
+	fmt.Println(`- RabbitMQ Server Monitor (0.0.1)`)
 	fmt.Printf("- Vhost %s\n", m.Vhost)
 	fmt.Println(`=======================================`)
 
@@ -60,6 +62,7 @@ func (m *MonitorScreen) Show() (succeeded bool) {
 					d.Url = fmt.Sprintf("%s/%s", url, q.Name)
 
 					d.build(q)
+					m.FireBackground("queue.data", d)
 
 					channel <- d
 				}(q)
@@ -88,6 +91,7 @@ func (m *MonitorScreen) OnScreen() {
 	}
 	sort.Strings(keys)
 
+	m.FireBackground("queues.data", m.Data)
 	for _, name := range keys {
 		q := m.Data[name]
 		sign := "+"

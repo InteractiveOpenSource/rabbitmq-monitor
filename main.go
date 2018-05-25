@@ -9,7 +9,6 @@ import (
 var config ServerConfig
 var err error
 var tick int
-// var emitter EventEmitter = GetEmmiter()
 
 func main() {
 	emitter := GetEmitter()
@@ -65,12 +64,12 @@ func main() {
 			Flags: append(app.Flags, []cli.Flag{}...),
 			Usage: "Wait tasks by listening to queue server",
 			Action: func(c *cli.Context) error {
-				log.Println("[INFO] Checking server config...", config)
+				emitter.Fire("log", "MONITOR", "INFO", "Checking server config...", config)
 				if err = config.Validate(); err != nil {
 					return err
 				}
 
-				monitor := Monitor(config)
+				monitor := Monitor(config, emitter)
 
 				monitor.Tick(tick)
 
